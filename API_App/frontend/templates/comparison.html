@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block title %}Comparison · Marine Buoy{% endblock %}
+{% block content %}
+<h1>Model Comparison</h1>
+<p>MAE, RMSE, R² on validation and test set. Best model selected on validation RMSE.</p>
+
+{% if error %}
+  <div class="alert">{{ error }}</div>
+{% elif data %}
+  {% for group, group_data in data.items() %}
+  <h2>{{ group | upper }}</h2>
+  {% for target, models in group_data.items() %}
+  <h3>{{ target }}</h3>
+  {% if group == "sklearn" %}
+    <p>Best model: <strong>{{ models.best }}</strong></p>
+    <table>
+      <thead>
+        <tr><th>Model</th><th>Val MAE</th><th>Val RMSE</th><th>Val R²</th><th>Test MAE</th><th>Test RMSE</th><th>Test R²</th></tr>
+      </thead>
+      <tbody>
+        {% for name, m in models.metrics.items() %}
+        <tr class="{{ 'best' if name == models.best else '' }}">
+          <td>{{ name }}{% if name == models.best %} ⭐{% endif %}</td>
+          <td>{{ m.val.MAE }}</td><td>{{ m.val.RMSE }}</td><td>{{ m.val.R2 }}</td>
+          <td>{{ m.test.MAE }}</td><td>{{ m.test.RMSE }}</td><td>{{ m.test.R2 }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% else %}
+    <table>
+      <thead><tr><th>Model</th><th>Val MAE</th><th>Val RMSE</th><th>Val R²</th><th>Test MAE</th><th>Test RMSE</th><th>Test R²</th></tr></thead>
+      <tbody>
+        <tr>
+          <td>{{ models.best_estimator }} (AutoML)</td>
+          <td>{{ models.metrics.val.MAE }}</td>
+          <td>{{ models.metrics.val.RMSE }}</td>
+          <td>{{ models.metrics.val.R2 }}</td>
+          <td>{{ models.metrics.test.MAE }}</td>
+          <td>{{ models.metrics.test.RMSE }}</td>
+          <td>{{ models.metrics.test.R2 }}</td>
+        </tr>
+      </tbody>
+    </table>
+  {% endif %}
+  {% endfor %}
+  {% endfor %}
+{% endif %}
+{% endblock %}

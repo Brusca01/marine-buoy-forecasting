@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+{% block title %}Prediction · Marine Buoy{% endblock %}
+{% block content %}
+<h1>Prediction</h1>
+
+<form method="get" action="/prediction">
+  <label>Station <input name="station" value="{{ station }}"></label>
+  <label>History points <input type="number" name="n_history" value="{{ n_history }}" min="1" max="5000"></label>
+  <button type="submit">Update</button>
+</form>
+
+{% if error %}
+  <div class="alert">{{ error }}</div>
+{% elif data %}
+  {% for target, p in data.predictions.items() %}
+  <section>
+    <h2>{{ target }} ({{ p.unit }})</h2>
+    <div class="cards">
+      <div class="card">
+        <div class="label">Prediction</div>
+        <div class="value">{{ p.predicted_value }} {{ p.unit }}</div>
+        <div class="sub">at {{ p.predicted_timestamp[:16] }}</div>
+      </div>
+      <div class="card">
+        <div class="label">Persistence baseline</div>
+        <div class="value">{{ p.persistence_value }} {{ p.unit }}</div>
+        <div class="sub">last observed value</div>
+      </div>
+      <div class="card">
+        <div class="label">Model</div>
+        <div class="value small">{{ p.model_name }}</div>
+        <div class="sub">last data: {{ p.last_timestamp[:16] }}</div>
+      </div>
+    </div>
+    <canvas id="chart_{{ target }}" height="90"></canvas>
+  </section>
+  {% endfor %}
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+const DATA = {{ data | tojson if data else 'null' }};
+window.addEventListener('load', () => {
+  if (!DATA || typeof Chart === 'undefined') return;
+  for (const [target, p] of Object.entries(DATA.predictions)) {
+    const labels = p.history.map(h => h.timestamp.slice(0,16));
+    const values = p.history.map(h => h.value);
+    labels.push(p.predicted_timestamp.slice(0,16));
+    const obs = [...values, null];
+    const pred = [...new Array(values.length).fill(null), p.predicted_value];
+    pred[values.length - 1] = values[values.length - 1];
+    new Chart(document.getElementById('chart_' + target), {
+      type: 'line',
+      data: { labels, datasets: [
+        { label: target + ' observed', data: obs, borderColor: '#2563eb', pointRadius: 0, tension: 0.2 },
+        { label: 'prediction', data: pred, borderColor: '#ea580c', pointRadius: 5, tension: 0.2 }
+      ]},
+      options: { responsive: true, scales: { x: { ticks: { maxTicksLimit: 8 }}}}
+    });
+  }
+});
+</script>
+{% endblock %}

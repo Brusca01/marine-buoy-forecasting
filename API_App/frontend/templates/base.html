@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Marine Buoy{% endblock %}</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js" defer></script>
+  {% block head %}{% endblock %}
+</head>
+<body>
+  <nav>
+    <a href="/">🌊 Marine Buoy</a>
+    <a href="/prediction">Prediction</a>
+    <a href="/comparison">Comparison</a>
+    <a href="/clustering">Clustering</a>
+  </nav>
+  <main>
+    {% block content %}{% endblock %}
+  </main>
+  <footer>NOAA Buoy 42002 · Qdrant/NOAA-Buoy · Data Science for Business</footer>
+  {% block scripts %}{% endblock %}
+</body>
+</html>

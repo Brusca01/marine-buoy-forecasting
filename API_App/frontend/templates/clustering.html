@@ -1,0 +1,113 @@
+{% extends "base.html" %}
+{% block title %}Clustering · Marine Buoy{% endblock %}
+{% block content %}
+<h1>Buoy Clustering</h1>
+<p>KMeans clustering on buoy 42002 time periods. Each point = one month (static) or one year (dynamic). Features: mean + std of WVHT, WTMP, WSPD, PRES, ATMP. PCA for 2D visualization. Best k via silhouette score.</p>
+
+<h2>Static Clustering (monthly profiles)</h2>
+<p>Each month of the buoy's history is described by its average conditions. Similar months are grouped in the same cluster (e.g. calm summer months vs rough winter months).</p>
+{% if serr %}
+  <div class="alert">{{ serr }}</div>
+{% elif static %}
+  <p>k = {{ static.k }} · silhouette = {{ static.silhouette }} · months = {{ static.n_points }}</p>
+  <canvas id="scatterChart" height="110"></canvas>
+  <h3>Silhouette Score by k</h3>
+  <p>Higher = better defined clusters. Blue bar = selected k.</p>
+  <canvas id="silhouetteChart" height="70"></canvas>
+  <h3>Elbow Plot (Inertia by k)</h3>
+  <p>Look for the elbow where inertia stops decreasing significantly.</p>
+  <canvas id="elbowChart" height="70"></canvas>
+{% endif %}
+
+<h2>Dynamic Clustering (how regimes vary year by year)</h2>
+<p>Each year of buoy 42002 is described by its annual profile. Shows how the meteorological regime shifts over time.</p>
+{% if derr %}
+  <div class="alert">{{ derr }}</div>
+{% elif dynamic %}
+  <p>k = {{ dynamic.k }} · silhouette = {{ dynamic.silhouette }} · years = {{ dynamic.n_points }}</p>
+  <canvas id="dynamicChart" height="110"></canvas>
+  <h3>Regime sequence (by year)</h3>
+  <table>
+    <thead><tr><th>Station</th><th>Cluster sequence</th><th>Changes</th></tr></thead>
+    <tbody>
+      {% for st, seq in dynamic.sequences.items() %}
+      <tr>
+        <td>{{ st }}</td>
+        <td>{{ seq.clusters | join(" → ") }}</td>
+        <td>{{ seq.changes }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+const STATIC = {{ static | tojson if static else 'null' }};
+const DYN = {{ dynamic | tojson if dynamic else 'null' }};
+const COLORS = ['#2563eb','#ea580c','#16a34a','#9333ea','#ca8a04'];
+
+window.addEventListener('load', () => {
+  if (!STATIC || typeof Chart === 'undefined') return;
+
+  // Static scatter
+  const sg = {};
+  STATIC.points.forEach(p => (sg[p.cluster] = sg[p.cluster]||[]).push(p));
+  new Chart(document.getElementById('scatterChart'), {
+    type: 'scatter',
+    data: { datasets: Object.keys(sg).sort().map(c => ({
+      label: 'Cluster ' + c,
+      data: sg[c].map(p => ({x: p.pca_x, y: p.pca_y, _l: p.year_month})),
+      backgroundColor: COLORS[c % COLORS.length], pointRadius: 4,
+    }))},
+    options: { responsive: true,
+      plugins: { tooltip: { callbacks: { label: ctx => ctx.raw._l }}},
+      scales: { x:{title:{display:true,text:'PCA 1'}}, y:{title:{display:true,text:'PCA 2'}}}}
+  });
+
+  // Silhouette
+  const silK = Object.keys(STATIC.silhouette_by_k).map(Number).sort((a,b)=>a-b);
+  new Chart(document.getElementById('silhouetteChart'), {
+    type: 'bar',
+    data: { labels: silK.map(k=>'k='+k), datasets: [{
+      data: silK.map(k=>STATIC.silhouette_by_k[k]),
+      backgroundColor: silK.map(k => k===STATIC.k ? '#2563eb' : '#93c5fd'),
+    }]},
+    options: { responsive: true,
+      scales: { y:{min:0,max:1,title:{display:true,text:'Silhouette'}}},
+      plugins: {legend:{display:false}}}
+  });
+
+  // Elbow
+  const eK = Object.keys(STATIC.inertia_by_k).map(Number).sort((a,b)=>a-b);
+  new Chart(document.getElementById('elbowChart'), {
+    type: 'line',
+    data: { labels: eK.map(k=>'k='+k), datasets: [{
+      data: eK.map(k=>STATIC.inertia_by_k[k]),
+      borderColor: '#2563eb', backgroundColor: '#93c5fd', pointRadius: 5, tension: 0.2,
+    }]},
+    options: { responsive: true,
+      scales: { y:{title:{display:true,text:'Inertia'}}},
+      plugins: {legend:{display:false}}}
+  });
+
+  // Dynamic scatter
+  if (DYN) {
+    const dg = {};
+    DYN.points.forEach(p => (dg[p.cluster] = dg[p.cluster]||[]).push(p));
+    new Chart(document.getElementById('dynamicChart'), {
+      type: 'scatter',
+      data: { datasets: Object.keys(dg).sort().map(c => ({
+        label: 'Cluster ' + c,
+        data: dg[c].map(p => ({x: p.pca_x, y: p.pca_y, _l: String(p.year)})),
+        backgroundColor: COLORS[c % COLORS.length], pointRadius: 6,
+      }))},
+      options: { responsive: true,
+        plugins: { tooltip: { callbacks: { label: ctx => ctx.raw._l }}},
+        scales: { x:{title:{display:true,text:'PCA 1'}}, y:{title:{display:true,text:'PCA 2'}}}}
+    });
+  }
+});
+</script>
+{% endblock %}

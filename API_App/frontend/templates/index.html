@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block title %}Dashboard · Marine Buoy{% endblock %}
+{% block content %}
+<h1>Marine Buoy Weather Forecasting</h1>
+<p>Predicting <strong>WVHT</strong> (wave height) and <strong>WTMP</strong> (water temperature) on NOAA buoy 42002 using Ridge, Random Forest, Gradient Boosting and AutoML.</p>
+
+{% if error %}
+  <div class="alert">{{ error }}</div>
+{% elif data %}
+  <div class="cards">
+    {% for target, p in data.predictions.items() %}
+    <div class="card">
+      <div class="label">{{ target }} · {{ p.unit }}</div>
+      <div class="value">{{ p.predicted_value }}</div>
+      <div class="sub">predicted at {{ p.predicted_timestamp[:16] }}</div>
+      <div class="sub">model: {{ p.model_name }}</div>
+      <div class="sub">persistence: {{ p.persistence_value }} {{ p.unit }}</div>
+    </div>
+    {% endfor %}
+  </div>
+  <p><a href="/prediction" class="btn">View full prediction →</a>
+     <a href="/comparison" class="btn">Compare models →</a>
+     <a href="/clustering" class="btn">Clustering →</a></p>
+{% endif %}
+{% endblock %}
