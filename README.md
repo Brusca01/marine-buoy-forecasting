@@ -126,17 +126,22 @@ docker run --rm -v "C:\path\to\project\data:/app/data" -v "C:\path\to\project\mo
 
 ### Start the application
 
-**Linux / macOS:**
+**From GitHub Container Registry (recommended):**
 ```bash
-docker run --rm -p 8000:8000 -p 8080:8080 \
-  -v "$PWD/data:/app/data" \
-  -v "$PWD/models:/app/models" \
-  marine-buoy
+docker pull ghcr.io/brusca01/marine-buoy-forecasting:latest
+docker run --rm -p 8000:8000 -p 8080:8080 ghcr.io/brusca01/marine-buoy-forecasting:latest
 ```
 
-**Windows (PowerShell):**
+**From local build:**
+
+*Linux / macOS:*
+```bash
+docker run --rm -p 8000:8000 -p 8080:8080 marine-buoy
+```
+
+*Windows (PowerShell):*
 ```powershell
-docker run --rm -p 8000:8000 -p 8080:8080 -v "C:\path\to\project\data:/app/data" -v "C:\path\to\project\models:/app/models" marine-buoy
+docker run --rm -p 8000:8000 -p 8080:8080 marine-buoy
 ```
 
 - Frontend → **http://localhost:8000**
