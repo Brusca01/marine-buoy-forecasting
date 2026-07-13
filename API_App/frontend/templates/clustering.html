@@ -1,39 +1,52 @@
 {% extends "base.html" %}
 {% block title %}Clustering · Marine Buoy{% endblock %}
 {% block content %}
-<h1>Buoy Clustering</h1>
-<p>KMeans clustering on buoy 42002 time periods. Each point = one month (static) or one year (dynamic). Features: mean + std of WVHT, WTMP, WSPD, PRES, ATMP. PCA for 2D visualization. Best k via silhouette score.</p>
+<h1>Buoy Similarity Analysis</h1>
+<p>KMeans clustering groups buoys with similar meteorological behavior. Each buoy is described by the <strong>mean and standard deviation</strong> of WVHT, WTMP, WSPD, PRES and ATMP — 10 features in total. <strong>StandardScaler</strong> normalizes all features before clustering. The best number of clusters k is chosen automatically via the <strong>Silhouette Score</strong>.</p>
 
-<h2>Static Clustering (monthly profiles)</h2>
-<p>Each month of the buoy's history is described by its average conditions. Similar months are grouped in the same cluster (e.g. calm summer months vs rough winter months).</p>
+<h2>Static Clustering — Overall Buoy Profiles</h2>
+<p>Each point in the scatter represents <strong>one buoy</strong>, described by its average conditions over the entire observation period. Buoys close together in the PCA space have similar long-term meteorological profiles.</p>
 {% if serr %}
   <div class="alert">{{ serr }}</div>
 {% elif static %}
-  <p>k = {{ static.k }} · silhouette = {{ static.silhouette }} · months = {{ static.n_points }}</p>
-  <canvas id="scatterChart" height="110"></canvas>
+  <p><strong>k = {{ static.k }}</strong> · silhouette = {{ static.silhouette }} · stations = {{ static.n_stations }}</p>
+  {% for cid, members in static.clusters.items() %}
+    <p><strong>Cluster {{ cid }}:</strong> {{ members | join(", ") }}</p>
+  {% endfor %}
+
+  <h3>PCA Scatter Plot</h3>
+  <p>PCA reduces the 10 features to 2 dimensions for visualization. Each labeled point is a buoy. Distance between points reflects meteorological similarity — buoys far apart have different wave/temperature regimes.</p>
+  <canvas id="scatterChart" height="120"></canvas>
+
   <h3>Silhouette Score by k</h3>
-  <p>Higher = better defined clusters. Blue bar = selected k.</p>
+  <p>The silhouette score measures how well each buoy fits its assigned cluster vs the nearest other cluster. Values range from -1 to 1 — higher is better. The <strong>blue bar</strong> is the automatically selected k with the highest score.</p>
   <canvas id="silhouetteChart" height="70"></canvas>
-  <h3>Elbow Plot (Inertia by k)</h3>
-  <p>Look for the elbow where inertia stops decreasing significantly.</p>
+
+  <h3>Elbow Plot — Inertia by k</h3>
+  <p>Inertia measures the total distance of buoys from their cluster centroid. It always decreases as k increases, but the rate slows — the "elbow" point suggests a good k. Used alongside the silhouette score to confirm the choice.</p>
   <canvas id="elbowChart" height="70"></canvas>
 {% endif %}
 
-<h2>Dynamic Clustering (how regimes vary year by year)</h2>
-<p>Each year of buoy 42002 is described by its annual profile. Shows how the meteorological regime shifts over time.</p>
+<h2>Dynamic Clustering — How Regimes Vary Over Time</h2>
+<p>Each point represents <strong>one buoy in one year</strong>, described by its annual average conditions. This shows how each buoy's meteorological regime shifts year by year and whether different buoys share the same regime in the same period.</p>
 {% if derr %}
   <div class="alert">{{ derr }}</div>
 {% elif dynamic %}
-  <p>k = {{ dynamic.k }} · silhouette = {{ dynamic.silhouette }} · years = {{ dynamic.n_points }}</p>
-  <canvas id="dynamicChart" height="110"></canvas>
-  <h3>Regime sequence (by year)</h3>
+  <p><strong>k = {{ dynamic.k }}</strong> · silhouette = {{ dynamic.silhouette }} · total points = {{ dynamic.n_points }}</p>
+
+  <h3>PCA Scatter Plot (buoy × year)</h3>
+  <p>Each point is labeled with the buoy ID and year. Points of the same color belong to the same cluster — they share similar annual meteorological conditions. Points close together across different buoys indicate those buoys had similar conditions in those years.</p>
+  <canvas id="dynamicChart" height="130"></canvas>
+
+  <h3>Regime Sequence per Buoy</h3>
+  <p>Shows the cluster each buoy belonged to in each year. A change in cluster number means the buoy's annual conditions moved to a different meteorological regime. More changes = more variability over time.</p>
   <table>
-    <thead><tr><th>Station</th><th>Cluster sequence</th><th>Changes</th></tr></thead>
+    <thead><tr><th>Station</th><th>Cluster sequence (by year)</th><th>Changes</th></tr></thead>
     <tbody>
       {% for st, seq in dynamic.sequences.items() %}
       <tr>
         <td>{{ st }}</td>
-        <td>{{ seq.clusters | join(" → ") }}</td>
+        <td style="font-family:monospace;font-size:.85rem">{{ seq.clusters | join(" → ") }}</td>
         <td>{{ seq.changes }}</td>
       </tr>
       {% endfor %}
@@ -45,28 +58,32 @@
 {% block scripts %}
 <script>
 const STATIC = {{ static | tojson if static else 'null' }};
-const DYN = {{ dynamic | tojson if dynamic else 'null' }};
-const COLORS = ['#2563eb','#ea580c','#16a34a','#9333ea','#ca8a04'];
+const DYN    = {{ dynamic | tojson if dynamic else 'null' }};
+const COLORS = ['#2563eb','#ea580c','#16a34a','#9333ea','#ca8a04','#1098ad'];
 
-window.addEventListener('load', () => {
-  if (!STATIC || typeof Chart === 'undefined') return;
-
-  // Static scatter
-  const sg = {};
-  STATIC.points.forEach(p => (sg[p.cluster] = sg[p.cluster]||[]).push(p));
-  new Chart(document.getElementById('scatterChart'), {
+function makeScatter(id, points, labelFn, radius) {
+  if (!points || typeof Chart === 'undefined') return;
+  const groups = {};
+  points.forEach(p => (groups[p.cluster] = groups[p.cluster]||[]).push(p));
+  new Chart(document.getElementById(id), {
     type: 'scatter',
-    data: { datasets: Object.keys(sg).sort().map(c => ({
+    data: { datasets: Object.keys(groups).sort().map(c => ({
       label: 'Cluster ' + c,
-      data: sg[c].map(p => ({x: p.pca_x, y: p.pca_y, _l: p.year_month})),
-      backgroundColor: COLORS[c % COLORS.length], pointRadius: 4,
+      data: groups[c].map(p => ({x: p.pca_x, y: p.pca_y, _l: labelFn(p)})),
+      backgroundColor: COLORS[c % COLORS.length],
+      pointRadius: radius || 7,
     }))},
     options: { responsive: true,
       plugins: { tooltip: { callbacks: { label: ctx => ctx.raw._l }}},
       scales: { x:{title:{display:true,text:'PCA 1'}}, y:{title:{display:true,text:'PCA 2'}}}}
   });
+}
 
-  // Silhouette
+window.addEventListener('load', () => {
+  if (!STATIC || typeof Chart === 'undefined') return;
+
+  makeScatter('scatterChart', STATIC.points, p => p.station_id, 10);
+
   const silK = Object.keys(STATIC.silhouette_by_k).map(Number).sort((a,b)=>a-b);
   new Chart(document.getElementById('silhouetteChart'), {
     type: 'bar',
@@ -75,11 +92,10 @@ window.addEventListener('load', () => {
       backgroundColor: silK.map(k => k===STATIC.k ? '#2563eb' : '#93c5fd'),
     }]},
     options: { responsive: true,
-      scales: { y:{min:0,max:1,title:{display:true,text:'Silhouette'}}},
+      scales: { y:{min:0, max:1, title:{display:true,text:'Silhouette Score'}}},
       plugins: {legend:{display:false}}}
   });
 
-  // Elbow
   const eK = Object.keys(STATIC.inertia_by_k).map(Number).sort((a,b)=>a-b);
   new Chart(document.getElementById('elbowChart'), {
     type: 'line',
@@ -92,22 +108,8 @@ window.addEventListener('load', () => {
       plugins: {legend:{display:false}}}
   });
 
-  // Dynamic scatter
-  if (DYN) {
-    const dg = {};
-    DYN.points.forEach(p => (dg[p.cluster] = dg[p.cluster]||[]).push(p));
-    new Chart(document.getElementById('dynamicChart'), {
-      type: 'scatter',
-      data: { datasets: Object.keys(dg).sort().map(c => ({
-        label: 'Cluster ' + c,
-        data: dg[c].map(p => ({x: p.pca_x, y: p.pca_y, _l: String(p.year)})),
-        backgroundColor: COLORS[c % COLORS.length], pointRadius: 6,
-      }))},
-      options: { responsive: true,
-        plugins: { tooltip: { callbacks: { label: ctx => ctx.raw._l }}},
-        scales: { x:{title:{display:true,text:'PCA 1'}}, y:{title:{display:true,text:'PCA 2'}}}}
-    });
-  }
+  if (DYN) makeScatter('dynamicChart', DYN.points,
+    p => p.station_id + ' ' + p.year, 5);
 });
 </script>
 {% endblock %}

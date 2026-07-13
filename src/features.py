@@ -7,6 +7,7 @@ TARGETS = ["WVHT", "WTMP"]
 LAGS = [1, 2, 3, 6, 12, 24]
 ROLLS = [3, 6, 24]
 HORIZON = 1
+STATIONS = ["42002", "42001", "42039", "46042"]
 
 
 def _build(df, target):
@@ -36,9 +37,15 @@ def _build(df, target):
     return out.dropna().reset_index(drop=True)
 
 
-def build_features(station="42002"):
-    src = PROCESSED / f"buoy_{station}_clean.csv"
-    df = pd.read_csv(src, parse_dates=["timestamp"])
+def build_features(station):
+    src = PROCESSED / "buoys_clean.csv"
+    if not src.exists():
+        raise FileNotFoundError(f"{src} not found. Run clean.py first.")
+    df_all = pd.read_csv(src, parse_dates=["timestamp"])
+    df = df_all[df_all["station_id"].astype(str) == str(station)].copy()
+    if df.empty:
+        raise ValueError(f"No data for station {station}")
+
     results = {}
     for target in TARGETS:
         sup = _build(df, target)
@@ -54,24 +61,16 @@ def build_features(station="42002"):
             part.to_csv(PROCESSED / f"{name}_{station}_{target}.csv", index=False)
         feat_cols = [c for c in sup.columns if c not in ("timestamp", "y")]
         results[target] = {"splits": splits, "features": feat_cols}
-        print(f"[features] {target}: {n} rows, {len(feat_cols)} features | "
+        print(f"[features] {station} {target}: {n} rows, {len(feat_cols)} features | "
               f"train={i_tr} val={i_va-i_tr} test={n-i_va}")
     return results
 
 
-def load_splits(station="42002"):
-    out = {}
-    for target in TARGETS:
-        out[target] = {}
-        for split in ("train", "val", "test"):
-            f = PROCESSED / f"{split}_{station}_{target}.csv"
-            out[target][split] = pd.read_csv(f, parse_dates=["timestamp"])
-    return out
-
-
-def feature_cols(df):
-    return [c for c in df.columns if c not in ("timestamp", "y")]
-
-
 if __name__ == "__main__":
-    build_features()
+    import sys
+    stations = sys.argv[1:] if len(sys.argv) > 1 else STATIONS
+    for st in stations:
+        try:
+            build_features(st)
+        except Exception as e:
+            print(f"[features] {st}: {e}")

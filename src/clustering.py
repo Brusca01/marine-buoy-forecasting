@@ -10,7 +10,6 @@ from sklearn.metrics import silhouette_score
 PROCESSED = Path(__file__).parents[1] / "data" / "processed"
 CLUSTER_DIR = PROCESSED / "clustering"
 PROFILE_VARS = ["WVHT", "WTMP", "WSPD", "PRES", "ATMP"]
-STATION = "42002"
 
 
 def _scale(X):
@@ -30,12 +29,10 @@ def _best_k(Xs, kmin=2, kmax=8):
     return best_k, silhouettes, inertias
 
 
-def _profile_monthly(df):
-    df = df.copy()
-    df["year_month"] = pd.to_datetime(df["timestamp"], utc=True).dt.to_period("M").astype(str)
+def _profile(df, group_cols):
     rows = []
-    for ym, g in df.groupby("year_month"):
-        row = {"year_month": ym}
+    for keys, g in df.groupby(group_cols):
+        row = dict(zip(group_cols, keys if isinstance(keys, tuple) else [keys]))
         for v in PROFILE_VARS:
             if v in g.columns:
                 row[f"{v}_mean"] = g[v].mean()
@@ -45,8 +42,8 @@ def _profile_monthly(df):
 
 
 def run_static(df):
-    prof = _profile_monthly(df)
-    feat = [c for c in prof.columns if c != "year_month"]
+    prof = _profile(df, ["station_id"])
+    feat = [c for c in prof.columns if c != "station_id"]
     Xs = _scale(prof[feat].values)
     k, silhouettes, inertias = _best_k(Xs)
     labels = KMeans(k, n_init=10, random_state=42).fit_predict(Xs)
@@ -60,9 +57,9 @@ def run_static(df):
         "silhouette": round(sil, 3),
         "silhouette_by_k": silhouettes,
         "inertia_by_k": inertias,
-        "clusters": {str(c): prof.loc[prof["cluster"]==c, "year_month"].tolist()
+        "n_stations": len(prof),
+        "clusters": {str(c): prof.loc[prof["cluster"]==c, "station_id"].tolist()
                      for c in sorted(set(labels))},
-        "n_points": len(prof),
     }
     return prof, info
 
@@ -70,18 +67,10 @@ def run_static(df):
 def run_dynamic(df):
     df = df.copy()
     df["year"] = pd.to_datetime(df["timestamp"], utc=True).dt.year
-    rows = []
-    for yr, g in df.groupby("year"):
-        row = {"year": int(yr)}
-        for v in PROFILE_VARS:
-            if v in g.columns:
-                row[f"{v}_mean"] = g[v].mean()
-                row[f"{v}_std"]  = g[v].std()
-        rows.append(row)
-    prof = pd.DataFrame(rows).dropna()
+    prof = _profile(df, ["station_id", "year"])
+    feat = [c for c in prof.columns if c not in ["station_id", "year"]]
     if len(prof) < 3:
         return prof, {"k": 0, "silhouette": 0, "sequences": {}, "n_points": 0}
-    feat = [c for c in prof.columns if c != "year"]
     Xs = _scale(prof[feat].values)
     k, silhouettes, inertias = _best_k(Xs)
     labels = KMeans(k, n_init=10, random_state=42).fit_predict(Xs)
@@ -90,14 +79,14 @@ def run_dynamic(df):
     prof["cluster"] = labels
     prof["pca_x"] = pca[:, 0]
     prof["pca_y"] = pca[:, 1]
-    prof = prof.sort_values("year")
-    sequences = {
-        STATION: {
-            "years": prof["year"].tolist(),
-            "clusters": prof["cluster"].tolist(),
-            "changes": int((np.diff(prof["cluster"].values) != 0).sum()),
+    sequences = {}
+    for st, g in prof.groupby("station_id"):
+        g = g.sort_values("year")
+        sequences[str(st)] = {
+            "years": g["year"].tolist(),
+            "clusters": g["cluster"].tolist(),
+            "changes": int((np.diff(g["cluster"].values) != 0).sum()),
         }
-    }
     info = {
         "k": int(k),
         "silhouette": round(sil, 3),
@@ -110,23 +99,26 @@ def run_dynamic(df):
 
 
 def cluster():
-    src = PROCESSED / f"buoy_{STATION}_clean.csv"
+    src = PROCESSED / "buoys_clean.csv"
     if not src.exists():
         raise FileNotFoundError(f"{src} not found. Run clean.py first.")
     df = pd.read_csv(src, parse_dates=["timestamp"])
-    print(f"[clustering] buoy {STATION}: {len(df):,} rows")
+    df["station_id"] = df["station_id"].astype(str)
+    print(f"[clustering] {df['station_id'].nunique()} stations")
 
     CLUSTER_DIR.mkdir(parents=True, exist_ok=True)
 
     static_tab, static_info = run_static(df)
     static_tab.to_csv(CLUSTER_DIR / "static.csv", index=False)
     (CLUSTER_DIR / "static.json").write_text(json.dumps(static_info, indent=2))
-    print(f"[clustering] static k={static_info['k']} sil={static_info['silhouette']} points={static_info['n_points']}")
+    print(f"[clustering] static k={static_info['k']} sil={static_info['silhouette']}")
+    for c, stations in static_info["clusters"].items():
+        print(f"   cluster {c}: {stations}")
 
     dyn_tab, dyn_info = run_dynamic(df)
     dyn_tab.to_csv(CLUSTER_DIR / "dynamic.csv", index=False)
     (CLUSTER_DIR / "dynamic.json").write_text(json.dumps(dyn_info, indent=2))
-    print(f"[clustering] dynamic k={dyn_info['k']} sil={dyn_info['silhouette']} points={dyn_info['n_points']}")
+    print(f"[clustering] dynamic k={dyn_info['k']} sil={dyn_info['silhouette']}")
 
     return static_info, dyn_info
 

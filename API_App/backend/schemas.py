@@ -1,11 +1,6 @@
 from pydantic import BaseModel
 
 
-class PredictRequest(BaseModel):
-    station: str = "42002"
-    n_history: int = 168
-
-
 class HistoryPoint(BaseModel):
     timestamp: str
     value: float
@@ -27,19 +22,13 @@ class PredictResponse(BaseModel):
     predictions: dict[str, TargetPrediction]
 
 
-class MetricSet(BaseModel):
-    MAE: float
-    RMSE: float
-    R2: float
-
-
-class ModelMetrics(BaseModel):
-    val: MetricSet
-    test: MetricSet
+class StationInfo(BaseModel):
+    id: str
+    label: str
 
 
 class StaticPoint(BaseModel):
-    year_month: str
+    station_id: str
     cluster: int
     pca_x: float
     pca_y: float
@@ -50,12 +39,13 @@ class StaticClusterResponse(BaseModel):
     silhouette: float
     silhouette_by_k: dict[str, float]
     inertia_by_k: dict[str, float]
-    n_points: int
+    n_stations: int
     clusters: dict[str, list[str]]
     points: list[StaticPoint]
 
 
 class DynamicPoint(BaseModel):
+    station_id: str
     year: int
     cluster: int
     pca_x: float

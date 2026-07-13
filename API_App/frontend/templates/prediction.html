@@ -4,7 +4,15 @@
 <h1>Prediction</h1>
 
 <form method="get" action="/prediction">
-  <label>Station <input name="station" value="{{ station }}"></label>
+  <label>Station
+    <select name="station">
+      {% for s in stations %}
+      <option value="{{ s.id }}" {% if s.id == station %}selected{% endif %}>
+        {{ s.label }}
+      </option>
+      {% endfor %}
+    </select>
+  </label>
   <label>History points <input type="number" name="n_history" value="{{ n_history }}" min="1" max="5000"></label>
   <button type="submit">Update</button>
 </form>

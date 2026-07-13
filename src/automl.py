@@ -8,6 +8,7 @@ from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 PROCESSED = Path(__file__).parents[1] / "data" / "processed"
 MODELS_DIR = Path(__file__).parents[1] / "models"
 TARGETS = ["WVHT", "WTMP"]
+STATIONS = ["42002", "42001", "42039", "46042"]
 
 
 def metrics(y_true, y_pred):
@@ -20,17 +21,19 @@ def metrics(y_true, y_pred):
     }
 
 
-def run(station="42002", time_budget=60):
+def run(station, time_budget=60):
     from flaml import AutoML
     MODELS_DIR.mkdir(parents=True, exist_ok=True)
     results = {}
 
     for target in TARGETS:
-        print(f"\n=== AutoML {target} (budget={time_budget}s) ===")
+        print(f"\n=== AutoML {station} {target} (budget={time_budget}s) ===")
         splits = {}
         for s in ("train", "val", "test"):
-            splits[s] = pd.read_csv(
-                PROCESSED / f"{s}_{station}_{target}.csv", parse_dates=["timestamp"])
+            f = PROCESSED / f"{s}_{station}_{target}.csv"
+            if not f.exists():
+                raise FileNotFoundError(f"{f} not found. Run features.py first.")
+            splits[s] = pd.read_csv(f, parse_dates=["timestamp"])
 
         feat_cols = [c for c in splits["train"].columns if c not in ("timestamp", "y")]
         Xtr = splits["train"][feat_cols].values.astype(float)
@@ -43,14 +46,10 @@ def run(station="42002", time_budget=60):
         automl = AutoML()
         automl.fit(
             X_train=Xtr, y_train=ytr,
-            task="regression",
-            metric="rmse",
+            task="regression", metric="rmse",
             time_budget=time_budget,
-            eval_method="cv",
-            n_splits=5,
-            split_type="time",
-            seed=42,
-            verbose=0,
+            eval_method="cv", n_splits=5,
+            split_type="time", seed=42, verbose=0,
         )
 
         m = {
@@ -64,20 +63,28 @@ def run(station="42002", time_budget=60):
             "features": feat_cols,
             "target": target,
             "name": f"flaml:{automl.best_estimator}",
-        }, MODELS_DIR / f"automl_{target}.joblib")
+        }, MODELS_DIR / f"automl_{station}_{target}.joblib")
 
-        results[target] = {
-            "best_estimator": automl.best_estimator,
-            "metrics": m,
-        }
+        results[target] = {"best_estimator": automl.best_estimator, "metrics": m}
 
-    out = MODELS_DIR / "metrics_automl.json"
+    out = MODELS_DIR / f"metrics_automl_{station}.json"
     out.write_text(json.dumps(results, indent=2))
-    print(f"\n[automl] saved -> {MODELS_DIR}")
+    print(f"[automl] {station} saved -> {MODELS_DIR}")
     return results
 
 
 if __name__ == "__main__":
     import sys
-    budget = int(sys.argv[1]) if len(sys.argv) > 1 else 60
-    run(time_budget=budget)
+    budget = 60
+    stations = STATIONS
+    if len(sys.argv) > 1:
+        try:
+            budget = int(sys.argv[1])
+            stations = sys.argv[2:] if len(sys.argv) > 2 else STATIONS
+        except ValueError:
+            stations = sys.argv[1:]
+    for st in stations:
+        try:
+            run(st, time_budget=budget)
+        except Exception as e:
+            print(f"[automl] {st}: {e}")

@@ -26,23 +26,31 @@ def _get(path, params=None):
         return None, str(e)
 
 
+def _get_stations():
+    data, _ = _get("/api/stations")
+    return data or []
+
+
 @app.get("/", response_class=HTMLResponse)
 def index(request: Request):
-    data, err = _get("/api/predict")
-    return templates.TemplateResponse(request, "index.html", {"data": data, "error": err})
+    stations = _get_stations()
+    return templates.TemplateResponse(request, "index.html", {"stations": stations})
 
 
 @app.get("/prediction", response_class=HTMLResponse)
 def prediction(request: Request, station: str = "42002", n_history: int = 168):
     data, err = _get("/api/predict", {"station": station, "n_history": n_history})
+    stations = _get_stations()
     return templates.TemplateResponse(request, "prediction.html",
-        {"data": data, "error": err, "station": station, "n_history": n_history})
+        {"data": data, "error": err, "station": station,
+         "n_history": n_history, "stations": stations})
 
 
 @app.get("/comparison", response_class=HTMLResponse)
 def comparison(request: Request):
     data, err = _get("/api/comparison")
-    return templates.TemplateResponse(request, "comparison.html", {"data": data, "error": err})
+    return templates.TemplateResponse(request, "comparison.html",
+        {"data": data, "error": err})
 
 
 @app.get("/clustering", response_class=HTMLResponse)

@@ -2,24 +2,48 @@
 {% block title %}Dashboard · Marine Buoy{% endblock %}
 {% block content %}
 <h1>Marine Buoy Weather Forecasting</h1>
-<p>Predicting <strong>WVHT</strong> (wave height) and <strong>WTMP</strong> (water temperature) on NOAA buoy 42002 using Ridge, Random Forest, Gradient Boosting and AutoML.</p>
 
-{% if error %}
-  <div class="alert">{{ error }}</div>
-{% elif data %}
-  <div class="cards">
-    {% for target, p in data.predictions.items() %}
-    <div class="card">
-      <div class="label">{{ target }} · {{ p.unit }}</div>
-      <div class="value">{{ p.predicted_value }}</div>
-      <div class="sub">predicted at {{ p.predicted_timestamp[:16] }}</div>
-      <div class="sub">model: {{ p.model_name }}</div>
-      <div class="sub">persistence: {{ p.persistence_value }} {{ p.unit }}</div>
-    </div>
+<p>This application provides <strong>weather forecasting</strong> and <strong>buoy similarity analysis</strong> for NOAA buoys in the Gulf of Mexico and Pacific Ocean.</p>
+
+<p>Two meteorological variables are predicted one hour into the future using time-series regression with lag features:</p>
+<ul style="margin: .5rem 0 1rem 1.5rem; color: #475569;">
+  <li><strong>WVHT</strong> — Significant Wave Height (m)</li>
+  <li><strong>WTMP</strong> — Water Temperature (°C)</li>
+</ul>
+
+<p>Models compared: <strong>Persistence baseline</strong>, <strong>Ridge Regression</strong>, <strong>Random Forest</strong>, <strong>Gradient Boosting</strong> and <strong>AutoML (FLAML)</strong>. The best model is selected on validation RMSE using a chronological 70/15/15 split.</p>
+
+<p>Buoy similarity is analyzed via <strong>KMeans clustering</strong> on meteorological profiles, with silhouette score for automatic k selection and PCA for 2D visualization.</p>
+
+<div class="cards" style="margin-top:1.5rem;">
+  <a href="/prediction" class="card" style="text-decoration:none;">
+    <div class="label">📈 Prediction</div>
+    <div class="value small">WVHT + WTMP</div>
+    <div class="sub">Select a buoy and view the forecast at t+1h</div>
+  </a>
+  <a href="/comparison" class="card" style="text-decoration:none;">
+    <div class="label">📊 Model Comparison</div>
+    <div class="value small">MAE / RMSE / R²</div>
+    <div class="sub">Compare all models across all buoys and targets</div>
+  </a>
+  <a href="/clustering" class="card" style="text-decoration:none;">
+    <div class="label">🗺️ Clustering</div>
+    <div class="value small">Buoy Similarity</div>
+    <div class="sub">Which buoys share similar meteorological regimes</div>
+  </a>
+</div>
+
+<h2 style="margin-top:2rem;">Available Stations</h2>
+<table>
+  <thead><tr><th>Station ID</th><th>Location</th><th></th></tr></thead>
+  <tbody>
+    {% for s in stations %}
+    <tr>
+      <td>{{ s.id }}</td>
+      <td>{{ s.label }}</td>
+      <td><a href="/prediction?station={{ s.id }}" class="btn" style="padding:.3rem .6rem;font-size:.85rem">Predict →</a></td>
+    </tr>
     {% endfor %}
-  </div>
-  <p><a href="/prediction" class="btn">View full prediction →</a>
-     <a href="/comparison" class="btn">Compare models →</a>
-     <a href="/clustering" class="btn">Clustering →</a></p>
-{% endif %}
+  </tbody>
+</table>
 {% endblock %}

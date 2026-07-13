@@ -11,6 +11,7 @@ from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 PROCESSED = Path(__file__).parents[1] / "data" / "processed"
 MODELS_DIR = Path(__file__).parents[1] / "models"
 TARGETS = ["WVHT", "WTMP"]
+STATIONS = ["42002", "42001", "42039", "46042"]
 
 
 def metrics(y_true, y_pred):
@@ -29,16 +30,17 @@ def _xy(df, feat_cols):
     return X, y
 
 
-def train(station="42002"):
+def train(station):
     MODELS_DIR.mkdir(parents=True, exist_ok=True)
     all_metrics = {}
 
     for target in TARGETS:
-        print(f"\n=== {target} ===")
         splits = {}
         for s in ("train", "val", "test"):
-            splits[s] = pd.read_csv(
-                PROCESSED / f"{s}_{station}_{target}.csv", parse_dates=["timestamp"])
+            f = PROCESSED / f"{s}_{station}_{target}.csv"
+            if not f.exists():
+                raise FileNotFoundError(f"{f} not found. Run features.py first.")
+            splits[s] = pd.read_csv(f, parse_dates=["timestamp"])
 
         feat_cols = [c for c in splits["train"].columns if c not in ("timestamp", "y")]
         Xtr, ytr = _xy(splits["train"], feat_cols)
@@ -50,19 +52,20 @@ def train(station="42002"):
         Xva_s = scaler.transform(Xva)
         Xte_s = scaler.transform(Xte)
 
+        t0_col = f"{target}_t0"
+        t0_idx = feat_cols.index(t0_col)
+
         models = {
-            "persistence": None,
+            "persistence":      None,
             "ridge":            Ridge(alpha=1.0),
             "random_forest":    RandomForestRegressor(n_estimators=100, random_state=42, n_jobs=-1),
             "gradient_boosting":GradientBoostingRegressor(n_estimators=100, random_state=42),
         }
 
-        t0_col = f"{target}_t0"
-        t0_idx = feat_cols.index(t0_col)
-
         target_metrics = {}
         best_name, best_rmse = None, float("inf")
 
+        print(f"\n=== {station} {target} ===")
         for name, model in models.items():
             if name == "persistence":
                 yp_va = Xva[:, t0_idx]
@@ -86,31 +89,28 @@ def train(station="42002"):
         print(f"  -> best: {best_name}")
         best_model = models[best_name]
         best_scaler = scaler if best_name == "ridge" else None
+
         joblib.dump({
             "model": best_model,
             "scaler": best_scaler,
             "features": feat_cols,
             "target": target,
             "name": best_name,
-        }, MODELS_DIR / f"best_{target}.joblib")
-
-        for name, model in models.items():
-            if model is not None:
-                joblib.dump({
-                    "model": model,
-                    "scaler": scaler if name == "ridge" else None,
-                    "features": feat_cols,
-                    "target": target,
-                    "name": name,
-                }, MODELS_DIR / f"{name}_{target}.joblib")
+        }, MODELS_DIR / f"best_{station}_{target}.joblib")
 
         all_metrics[target] = {"best": best_name, "metrics": target_metrics}
 
-    out = MODELS_DIR / "metrics.json"
+    out = MODELS_DIR / f"metrics_{station}.json"
     out.write_text(json.dumps(all_metrics, indent=2))
-    print(f"\n[models] saved -> {MODELS_DIR}")
+    print(f"[models] {station} saved -> {MODELS_DIR}")
     return all_metrics
 
 
 if __name__ == "__main__":
-    train()
+    import sys
+    stations = sys.argv[1:] if len(sys.argv) > 1 else STATIONS
+    for st in stations:
+        try:
+            train(st)
+        except Exception as e:
+            print(f"[models] {st}: {e}")

@@ -5,7 +5,7 @@ sys.path.insert(0, str(Path(__file__).parents[2] / "src"))
 from fastapi import FastAPI, HTTPException
 from schemas import (
     PredictResponse, TargetPrediction, HistoryPoint,
-    StaticClusterResponse, DynamicClusterResponse,
+    StaticClusterResponse, DynamicClusterResponse, StationInfo,
 )
 import predictor
 
@@ -17,13 +17,19 @@ def health():
     return {"status": "ok"}
 
 
-@app.post("/api/predict", response_model=PredictResponse)
+@app.get("/api/stations", response_model=list[StationInfo])
+def stations():
+    return predictor.available_stations()
+
+
 @app.get("/api/predict", response_model=PredictResponse)
 def predict(station: str = "42002", n_history: int = 168):
     try:
         res = predictor.predict(station, n_history)
-    except FileNotFoundError as e:
+    except (FileNotFoundError, ValueError) as e:
         raise HTTPException(404, str(e))
+    except Exception as e:
+        raise HTTPException(500, str(e))
     predictions = {}
     for target, v in res.items():
         predictions[target] = TargetPrediction(
@@ -41,7 +47,7 @@ def predict(station: str = "42002", n_history: int = 168):
 @app.get("/api/comparison")
 def comparison():
     try:
-        return predictor.get_metrics()
+        return predictor.get_all_metrics()
     except FileNotFoundError as e:
         raise HTTPException(404, str(e))
 

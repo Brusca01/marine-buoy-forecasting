@@ -122,3 +122,5 @@ tr.best td { background: #eff6ff; font-weight: 600; }
 tr:last-child td { border-bottom: none; }
 
 canvas { margin-top: 1rem; }
+
+tr.alert-row td { background: #fff7ed; }
